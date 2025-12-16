@@ -1,6 +1,17 @@
 [package]
-name = "arena"
+name = "light-rc-arena"
 version = "0.1.0"
 edition = "2024"
+
+
+license = "MIT"
+readme = "README.md"
+repository="https://github.com/PsychedelicPalimpsest/light-rc-arena"
+homepage="https://github.com/PsychedelicPalimpsest/light-rc-arena"
+keywords=["arena"]
+
+
+
+
 
 [dependencies]
