@@ -3,6 +3,7 @@
 
 use std::{
     cell::{Cell, UnsafeCell},
+    fmt::{Debug, Display, Formatter},
     mem::MaybeUninit,
     ops::Deref,
     ptr::addr_of_mut,
@@ -26,7 +27,9 @@ impl<T, const N: usize> Segment<T, N> {
             let ptr = std::alloc::alloc(layout) as *mut Segment<T, N>;
 
             // Handle OOMs
-            if ptr.is_null() { std::alloc::handle_alloc_error(layout); }
+            if ptr.is_null() {
+                std::alloc::handle_alloc_error(layout);
+            }
 
             addr_of_mut!((*ptr).length).write(Cell::new(0));
             addr_of_mut!((*ptr).next).write(Cell::new(None));
@@ -50,7 +53,7 @@ impl<T, const N: usize> Drop for Segment<T, N> {
 }
 
 use std::cell::RefCell;
-/// A reference to a value within an [`Arena`]. It can be treated like any other reference type. 
+/// A reference to a value within an [`Arena`]. It can be treated like any other reference type.
 ///
 /// But, it is exclusivly read only. However you can still use a [`Cell`] or [`RefCell`] for interior
 /// mutability.
@@ -65,7 +68,7 @@ pub struct ArenaRef<T: Sized, const N: usize> {
 impl<T, const N: usize> ArenaRef<T, N> {
     ///  Try to retrieve the contained value.
     ///
-    ///  [`None`] corresponds to the parent [`Arena`] no longer existing 
+    ///  [`None`] corresponds to the parent [`Arena`] no longer existing
     pub fn try_get(&self) -> Option<&T> {
         // SAFETY: According to the 'weak_count' docs: `If no strong pointers remain, this will
         //         return zero.` So this is a valid check for if the arena is still valid
@@ -97,6 +100,24 @@ impl<T, const N: usize> Deref for ArenaRef<T, N> {
     fn deref(&self) -> &Self::Target {
         self.try_get()
             .expect("The arena assosiated with this value is no longer valid!")
+    }
+}
+
+impl<T: Debug, const N: usize> Debug for ArenaRef<T, N> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self.try_get() {
+            Some(value) => f.debug_tuple("ArenaRef").field(value).finish(),
+            None => f.debug_tuple("ArenaRef").field(&"<dead arena>").finish(),
+        }
+    }
+}
+
+impl<T: Display, const N: usize> Display for ArenaRef<T, N> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self.try_get() {
+            Some(value) => std::fmt::Display::fmt(value, f),
+            None => write!(f, "<dead arena reference>"),
+        }
     }
 }
 
@@ -135,8 +156,7 @@ impl<T, const N: usize> ArenaInner<T, N> {
     }
 }
 
-
-/// A typed memory arena that you can pass like an [`Rc`]. 
+/// A typed memory arena that you can pass like an [`Rc`].
 ///
 ///
 /// Example:
@@ -158,7 +178,7 @@ pub struct Arena<T: Sized, const N: usize = 64> {
 }
 
 impl<T, const N: usize> Arena<T, N> {
-    /// Create a new Arena 
+    /// Create a new Arena
     pub fn new() -> Arena<T, N> {
         assert!(N > 0, "Using zero for segment size is illegal!");
 
@@ -171,8 +191,6 @@ impl<T, const N: usize> Arena<T, N> {
 
         Arena { inner }
     }
-
-
 
     /// Move an object into the arena, and return a [`ArenaRef`] to its new location.
     #[inline]
