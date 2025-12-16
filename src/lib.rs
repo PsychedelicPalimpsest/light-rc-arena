@@ -46,15 +46,23 @@ impl<T, const N: usize> Drop for Segment<T, N> {
     }
 }
 
+use std::cell::RefCell;
+/// A reference to a value within an [`Arena`]. It can be treated like any other reference type. 
+///
+/// But, it is exclusivly read only. However you can still use a [`Cell`] or [`RefCell`] for interior
+/// mutability.
 pub struct ArenaRef<T: Sized, const N: usize> {
     arena: Weak<ArenaInner<T, N>>,
 
     // SAFETY: ptr MUST be contained within the tree of parent! And
-    //         it will be valid aslong as arena is valid
+    //         it will be valid as long as arena is valid
     ptr: *const T,
 }
 
 impl<T, const N: usize> ArenaRef<T, N> {
+    ///  Try to retrieve the contained value.
+    ///
+    ///  [`None`] corresponds to the parent [`Arena`] no longer existing 
     pub fn try_get(&self) -> Option<&T> {
         // SAFETY: According to the 'weak_count' docs: `If no strong pointers remain, this will
         //         return zero.` So this is a valid check for if the arena is still valid
@@ -65,6 +73,7 @@ impl<T, const N: usize> ArenaRef<T, N> {
         }
     }
 
+    ///  Try to retrive the parent [`Arena`]. Returns [`None`] when it is no longer alive,
     pub fn get_arena(&self) -> Option<Arena<T, N>> {
         self.arena.upgrade().map(|inner| Arena { inner })
     }
@@ -101,7 +110,7 @@ impl<T, const N: usize> ArenaInner<T, N> {
         if tail.length.get() >= N {
             let segment = Segment::new();
 
-            // This looks evil, but the box means this is valid*
+            // This looks evil, but the box means this is valid
             self.tail.set(&*segment as *const Segment<T, N>);
             tail.next.set(Some(segment));
         }
@@ -113,7 +122,7 @@ impl<T, const N: usize> ArenaInner<T, N> {
             let inner = &tail.data[old_length];
 
             // SAFETY: since it has not been "allocated" in the arena,
-            //         it has not been shared, so free to write over.
+            //         it has not been shared, so it is free to write over.
 
             (&mut *inner.get()).write(cont)
         };
@@ -123,11 +132,30 @@ impl<T, const N: usize> ArenaInner<T, N> {
     }
 }
 
-pub struct Arena<T: Sized, const N: usize = 32> {
+
+/// A typed memory arena that you can pass like an [`Rc`]. 
+///
+///
+/// Example:
+/// ```
+/// use light_rc_arena::*;
+///
+/// let arena = Arena::<i32>::new();
+///
+/// // Still a reference to the same arena
+/// let arena_copy = arena.clone();
+///
+/// let x : ArenaRef<i32, _> = arena_copy.alloc(-1);
+/// dbg!(*x); // -1
+///
+/// ```
+///
+pub struct Arena<T: Sized, const N: usize = 64> {
     inner: Rc<ArenaInner<T, N>>,
 }
 
 impl<T, const N: usize> Arena<T, N> {
+    /// Create a new Arena 
     pub fn new() -> Arena<T, N> {
         assert!(N > 0, "Using zero for segment size is illegal!");
 
@@ -141,6 +169,9 @@ impl<T, const N: usize> Arena<T, N> {
         Arena { inner }
     }
 
+
+
+    /// Move an object into the arena, and return a [`ArenaRef`] to its new location.
     #[inline]
     pub fn alloc(&self, cont: T) -> ArenaRef<T, N> {
         ArenaRef {
@@ -208,17 +239,18 @@ mod tests {
         assert_eq!(obj3.get(), -99); //> -99
 
         // You can clone the Arena or ArenaRefs as much as you like (just like an Rc)
-        // let _arena = arena.clone();
+        let arena2 = arena.clone();
         let _obj1 = obj1.clone();
 
-        // And even (not recommended) get an Arena from an ArenaRef
-        let _arena: Option<Arena<MyType>> = obj1.get_arena();
+        // And you can even get an Arena from an ArenaRef (though this is not recommended).
+        let arena3: Option<Arena<MyType>> = obj1.get_arena();
 
         // But fair warning! An ArenaRef will NOT keep the arena alive!
 
         // And it is YOUR RESPONSIBILITY to keep the arena alive
         drop(arena);
-        drop(_arena);
+        drop(arena2);
+        drop(arena3);
 
         // let value = &*obj1; // PANICS
 
