@@ -210,6 +210,12 @@ impl<T, const N: usize> Clone for Arena<T, N> {
     }
 }
 
+impl<T, const N: usize> PartialEq for Arena<T, N> {
+    fn eq(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.inner, &other.inner)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
