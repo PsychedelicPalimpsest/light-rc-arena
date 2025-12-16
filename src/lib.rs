@@ -25,6 +25,9 @@ impl<T, const N: usize> Segment<T, N> {
             let layout = std::alloc::Layout::new::<Segment<T, N>>();
             let ptr = std::alloc::alloc(layout) as *mut Segment<T, N>;
 
+            // Handle OOMs
+            if ptr.is_null() { std::alloc::handle_alloc_error(layout); }
+
             addr_of_mut!((*ptr).length).write(Cell::new(0));
             addr_of_mut!((*ptr).next).write(Cell::new(None));
 
