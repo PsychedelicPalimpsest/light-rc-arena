@@ -83,6 +83,13 @@ impl<T, const N: usize> ArenaRef<T, N> {
     pub fn get_arena(&self) -> Option<Arena<T, N>> {
         self.arena.upgrade().map(|inner| Arena { inner })
     }
+
+
+    /// Test if two [`ArenaRef`]s are pointing to the same values in the same [`Arena`]s.
+    pub fn ptr_eq(&self, other : &Self) -> bool {
+        self.ptr.eq(&other.ptr) && self.get_arena().eq(&other.get_arena())
+    }
+
 }
 
 impl<T, const N: usize> Clone for ArenaRef<T, N> {
