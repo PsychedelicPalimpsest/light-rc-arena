@@ -84,12 +84,10 @@ impl<T, const N: usize> ArenaRef<T, N> {
         self.arena.upgrade().map(|inner| Arena { inner })
     }
 
-
     /// Test if two [`ArenaRef`]s are pointing to the same values in the same [`Arena`]s.
-    pub fn ptr_eq(&self, other : &Self) -> bool {
+    pub fn ptr_eq(&self, other: &Self) -> bool {
         self.ptr.eq(&other.ptr) && self.get_arena().eq(&other.get_arena())
     }
-
 }
 
 impl<T, const N: usize> Clone for ArenaRef<T, N> {
@@ -130,8 +128,7 @@ impl<T: Display, const N: usize> Display for ArenaRef<T, N> {
 
 struct ArenaInner<T, const N: usize> {
     tail: Cell<*const Segment<T, N>>,
-
-    _head: Box<Segment<T, N>>,
+    head: Box<Segment<T, N>>,
 }
 
 impl<T, const N: usize> ArenaInner<T, N> {
@@ -193,7 +190,7 @@ impl<T, const N: usize> Arena<T, N> {
         let inner = Rc::new(ArenaInner {
             // Temp value
             tail: Cell::from(&*new_segment as *const Segment<T, N>),
-            _head: new_segment,
+            head: new_segment,
         });
 
         Arena { inner }
@@ -205,6 +202,15 @@ impl<T, const N: usize> Arena<T, N> {
         ArenaRef {
             arena: Rc::downgrade(&self.inner),
             ptr: self.inner.alloc(cont),
+        }
+    }
+
+    /// Create an iterator over every element in the [`Arena`], yeilding [`ArenaRef`]s
+    pub fn iter(&self) -> ArenaIterator<T, N> {
+        ArenaIterator {
+            arena_inner: self.inner.clone(),
+            pos: 0,
+            segment: self.inner.head.as_ref() as *const Segment<T, N>,
         }
     }
 }
@@ -220,6 +226,43 @@ impl<T, const N: usize> Clone for Arena<T, N> {
 impl<T, const N: usize> PartialEq for Arena<T, N> {
     fn eq(&self, other: &Self) -> bool {
         Rc::ptr_eq(&self.inner, &other.inner)
+    }
+}
+
+
+
+
+
+/// An iterator over every element in the [`Arena`], yeilding [`ArenaRef`]. 
+pub struct ArenaIterator<T: Sized, const N: usize> {
+    arena_inner: Rc<ArenaInner<T, N>>,
+    pos: usize,
+    segment: *const Segment<T, N>,
+}
+impl<T, const N: usize> Iterator for ArenaIterator<T, N> {
+    type Item = ArenaRef<T, N>;
+    fn next(&mut self) -> Option<Self::Item> {
+        unsafe {
+            if self.pos >= (*self.segment).length.get() {
+                self.pos = 0;
+
+                let old_segment = self.segment;
+                let next = (*self.segment).next.take()?;
+                self.segment = next.as_ref() as *const Segment<T, N>;
+
+                (*old_segment).next.set(Some(next));
+            }
+
+            let maybe_uninit_ptr = (*self.segment).data[self.pos].get();
+            let ptr = (*maybe_uninit_ptr).as_ptr();
+
+            self.pos += 1;
+
+            Some(ArenaRef {
+                arena: Rc::downgrade(&self.arena_inner),
+                ptr: ptr,
+            })
+        }
     }
 }
 
@@ -291,5 +334,21 @@ mod tests {
         // You can test if your arena is still valid:
         let value: Option<&MyType> = obj1.try_get();
         assert_eq!(value, None)
+    }
+
+
+    #[test]
+    fn test_iter(){
+        let arena: Arena<i32, 32> = Arena::new();
+        for i in 0..1024 {
+            arena.alloc(i);
+        }
+
+        let lhs : Vec<i32> = arena.iter().map(|x| *x).collect();
+        let rhs : Vec<i32> = (0..1024).collect();
+        assert_eq!(lhs, rhs);
+
+
+
     }
 }
