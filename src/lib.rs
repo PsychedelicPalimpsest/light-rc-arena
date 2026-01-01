@@ -13,7 +13,6 @@ use std::{
 struct Segment<T, const N: usize> {
     length: Cell<usize>,
 
-    // Note: This is only used for cleanup
     next: Cell<Option<Box<Segment<T, N>>>>,
 
     data: [UnsafeCell<MaybeUninit<T>>; N],
